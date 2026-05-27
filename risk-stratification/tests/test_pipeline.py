@@ -1,7 +1,10 @@
 from pathlib import Path
+import json
 
 import pandas as pd
+from fastapi.testclient import TestClient
 
+from risk_strat.api import create_app
 from risk_strat.data import TARGET_COLUMN, prepare_diabetes_dataframe
 from risk_strat.model import run_training
 
@@ -53,10 +56,35 @@ def test_training_pipeline_smoke(tmp_path: Path, monkeypatch) -> None:
 
     assert result.model_path.exists()
     assert result.metrics_path.exists()
+    assert result.fairness_path.exists()
+    assert result.shap_report_path.exists()
+    assert result.shap_background_path.exists()
 
     assert result.metrics["dataset"] == "uci_diabetes_130_us_hospitals"
     assert result.metrics["n_rows"] == rows
+    assert "fairness" in result.metrics
+    assert "shap" in result.metrics
     assert 0.5 <= result.metrics["roc_auc"] <= 1.0
     assert 0.0 <= result.metrics["average_precision"] <= 1.0
     assert 0.0 <= result.metrics["brier_score"] <= 1.0
+
+    app = create_app(model_path=result.model_path, background_path=result.shap_background_path)
+    client = TestClient(app)
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["background_available"] is True
+
+    payload = json.loads(synthetic_like.drop(columns=[TARGET_COLUMN]).iloc[0].to_json())
+    predict_response = client.post("/predict", json={"features": payload})
+    assert predict_response.status_code == 200
+    predict_body = predict_response.json()
+    assert 0.0 <= predict_body["risk_score"] <= 1.0
+    assert predict_body["risk_label"] in {0, 1}
+
+    explain_response = client.post("/explain", json={"features": payload})
+    assert explain_response.status_code == 200
+    explain_body = explain_response.json()
+    assert "top_contributions" in explain_body
+    assert len(explain_body["top_contributions"]) > 0
 

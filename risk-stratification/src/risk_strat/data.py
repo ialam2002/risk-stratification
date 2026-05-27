@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import warnings
 
+import numpy as np
 import pandas as pd
 
 UCI_DIABETES_DATASET_ID = 296
@@ -25,11 +27,16 @@ def _fetch_ucirepo() -> Any:
 def _clean_text_columns(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.copy()
     cleaned.columns = [str(column).strip() for column in cleaned.columns]
-    cleaned = cleaned.replace({"?": pd.NA, "": pd.NA})
 
     for column in cleaned.columns:
         if pd.api.types.is_object_dtype(cleaned[column]) or pd.api.types.is_string_dtype(cleaned[column]):
-            cleaned[column] = cleaned[column].astype("string").str.strip().replace({"": pd.NA})
+            cleaned[column] = cleaned[column].map(
+                lambda value: np.nan
+                if value in {"?", ""}
+                else value.strip()
+                if isinstance(value, str)
+                else value
+            )
 
     return cleaned
 
@@ -97,6 +104,8 @@ def load_dataset(input_csv: str | None = None) -> pd.DataFrame:
         return df
 
     fetch_ucirepo = _fetch_ucirepo()
-    dataset = fetch_ucirepo(id=UCI_DIABETES_DATASET_ID)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=pd.errors.DtypeWarning)
+        dataset = fetch_ucirepo(id=UCI_DIABETES_DATASET_ID)
     return prepare_diabetes_dataframe(dataset.data.features, dataset.data.targets)
 

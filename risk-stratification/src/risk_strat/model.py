@@ -17,6 +17,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from .data import TARGET_COLUMN, load_dataset
+from .explain import build_shap_report
+from .fairness import compute_fairness_report
 
 
 @dataclass
@@ -24,6 +26,9 @@ class TrainingResult:
     metrics: dict[str, Any]
     model_path: Path
     metrics_path: Path
+    fairness_path: Path
+    shap_report_path: Path
+    shap_background_path: Path
 
 
 def _build_pipeline(numeric_cols: list[str], categorical_cols: list[str]) -> Pipeline:
@@ -70,6 +75,18 @@ def _dataset_summary(df: pd.DataFrame, target_column: str) -> dict[str, Any]:
     }
 
 
+def _sample_frame(frame: pd.DataFrame, size: int, random_state: int) -> pd.DataFrame:
+    sample_size = min(size, len(frame))
+    if sample_size <= 0:
+        raise ValueError("Cannot sample from an empty frame.")
+    return frame.sample(n=sample_size, random_state=random_state).reset_index(drop=True)
+
+
+def _selected_group_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    candidate_columns = [column for column in ["age", "gender", "race"] if column in frame.columns]
+    return frame[candidate_columns].copy() if candidate_columns else pd.DataFrame(index=frame.index)
+
+
 def run_training(
     input_csv: str | None = None,
     target_column: str = TARGET_COLUMN,
@@ -100,6 +117,17 @@ def run_training(
     model.fit(X_train, y_train)
     y_prob = model.predict_proba(X_test)[:, 1]
 
+    fairness_report = compute_fairness_report(
+        y_true=y_test,
+        y_score=y_prob,
+        group_frame=_selected_group_frame(X_test),
+        min_group_size=max(50, int(len(X_test) * 0.02)),
+    )
+
+    shap_background = _sample_frame(X_train, size=200, random_state=random_state)
+    shap_sample = _sample_frame(X_test, size=100, random_state=random_state)
+    shap_report = build_shap_report(model=model, background_frame=shap_background, sample_frame=shap_sample)
+
     metrics = {
         **_dataset_summary(df, target_column),
         "roc_auc": float(roc_auc_score(y_test, y_prob)),
@@ -108,17 +136,36 @@ def run_training(
         "test_prevalence": float(y_test.mean()),
         "n_train": int(X_train.shape[0]),
         "n_test": int(X_test.shape[0]),
+        "fairness": fairness_report,
+        "shap": shap_report,
     }
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     model_path = output_path / "risk_model.joblib"
     metrics_path = output_path / "metrics.json"
+    fairness_path = output_path / "fairness.json"
+    shap_report_path = output_path / "shap_report.json"
+    shap_background_path = output_path / "shap_background.csv"
+
+    metrics["fairness_path"] = str(fairness_path)
+    metrics["shap_report_path"] = str(shap_report_path)
+    metrics["shap_background_path"] = str(shap_background_path)
 
     joblib.dump(model, model_path)
     metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    fairness_path.write_text(json.dumps(fairness_report, indent=2), encoding="utf-8")
+    shap_report_path.write_text(json.dumps(shap_report, indent=2), encoding="utf-8")
+    shap_background.to_csv(shap_background_path, index=False)
 
-    return TrainingResult(metrics=metrics, model_path=model_path, metrics_path=metrics_path)
+    return TrainingResult(
+        metrics=metrics,
+        model_path=model_path,
+        metrics_path=metrics_path,
+        fairness_path=fairness_path,
+        shap_report_path=shap_report_path,
+        shap_background_path=shap_background_path,
+    )
 
 
 def format_metrics(metrics: dict[str, Any]) -> str:
@@ -133,6 +180,8 @@ def format_metrics(metrics: dict[str, Any]) -> str:
         "test_prevalence",
         "n_train",
         "n_test",
+        "fairness_path",
+        "shap_report_path",
     ]
     lines = ["Training complete. Key metrics:"]
     for key in ordered:

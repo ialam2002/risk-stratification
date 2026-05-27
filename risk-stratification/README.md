@@ -19,6 +19,9 @@ The default workflow fetches the dataset directly through `ucimlrepo`, cleans th
 - End-to-end real-data ML workflow
 - Healthcare-style target definition and cohort cleaning
 - Model evaluation with `roc_auc`, `average_precision`, and `brier_score`
+- Fairness slices by `age`, `gender`, and `race`
+- SHAP-based feature attribution reports
+- FastAPI scoring and explanation endpoints
 - Reproducible training pipeline and test harness
 - Strong portfolio story for healthcare AI interviews
 
@@ -48,6 +51,14 @@ $env:PYTHONPATH = "src"
 python -m risk_strat
 ```
 
+The run will also save these artifacts under `artifacts/`:
+
+- `risk_model.joblib`
+- `metrics.json`
+- `fairness.json`
+- `shap_report.json`
+- `shap_background.csv`
+
 If you want to train from a local CSV export of the same cohort:
 
 ```powershell
@@ -61,6 +72,35 @@ If you export the cohort yourself, keep either:
 
 - `readmitted_binary` as the binary target, or
 - the raw `readmitted` column, which will be converted automatically.
+
+## Run the API
+
+After training once, start the service with:
+
+```powershell
+$env:PYTHONPATH = "src"
+uvicorn risk_strat.api:app --reload
+```
+
+Available endpoints:
+
+- `GET /health`
+- `POST /predict`
+- `POST /explain`
+
+Example payload:
+
+```json
+{
+  "features": {
+    "race": "Caucasian",
+    "gender": "Female",
+    "age": "[60-70)",
+    "time_in_hospital": 3,
+    "num_medications": 10
+  }
+}
+```
 
 ## Run tests
 

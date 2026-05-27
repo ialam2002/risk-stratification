@@ -1,90 +1,93 @@
 # Healthcare Readmission Risk Stratification
 
-This project predicts 30-day readmission risk using the real **UCI Diabetes 130-US hospitals for years 1999-2008** dataset.
+This repository contains a tabular machine learning pipeline for predicting short-term hospital readmission risk using the **UCI Diabetes 130-US Hospitals** dataset. The project includes model training, evaluation, explainability, fairness reporting, benchmark comparisons, and a small FastAPI service for inference.
 
-The default workflow fetches the dataset directly through `ucimlrepo`, cleans the cohort, maps the target to a binary label, and trains a baseline model.
+## What the project covers
+
+- Real healthcare dataset ingestion through `ucimlrepo`
+- Binary readmission target mapping (`<30` vs. `>30` / `NO`)
+- Training pipeline with preprocessing, calibration reporting, and threshold analysis
+- SHAP-based explainability outputs
+- Subgroup fairness reporting for age, gender, and race
+- Benchmark comparison against tree-based baselines
+- FastAPI inference endpoints
+- Container and CI configuration for local deployment workflows
 
 ## Dataset
 
-- **Source:** UCI ML Repository
-- **Dataset ID:** `296`
-- **Problem:** readmission prediction
-- **Binary target definition:**
-  - `<30` → 1
-  - `>30` → 0
-  - `NO` → 0
+- **Source:** UCI Machine Learning Repository
+- **Dataset:** Diabetes 130-US hospitals for years 1999-2008
+- **Identifier:** `296`
+- **Prediction target:** readmission within 30 days
 
-## What this demonstrates
+Target mapping used in this project:
 
-- End-to-end real-data ML workflow
-- Healthcare-style target definition and cohort cleaning
-- Model evaluation with `roc_auc`, `average_precision`, and `brier_score`
-- Fairness slices by `age`, `gender`, and `race` with disparity gaps
-- Calibration curve summary and mean absolute calibration error
-- Threshold tuning report (default, best F1, and best Youden J)
-- SHAP-based feature attribution reports
-- Auto-generated model card markdown for interview storytelling
-- FastAPI scoring and explanation endpoints
-- Reproducible training pipeline and test harness
-- Strong portfolio story for healthcare AI interviews
+- `<30` -> `1`
+- `>30` -> `0`
+- `NO` -> `0`
 
-## Project structure
+## Repository layout
 
 ```text
-risk-stratification/
-  src/risk_strat/
-    __init__.py
-    __main__.py
-    cli.py
-    data.py
-    model.py
-  tests/
-    test_pipeline.py
-  artifacts/               # generated at runtime
-  requirements.txt
-  README.md
+src/risk_strat/
+  api.py                  FastAPI inference service
+  baselines.py            Baseline model comparison
+  benchmark.py            Reproducible benchmark run
+  cli.py                  Command-line entrypoint
+  clinical_analysis.py    Threshold analysis utilities
+  compliance.py           Governance and deployment documentation helpers
+  data.py                 Data loading, cleaning, and split utilities
+  etl.py                  Example ETL and Spark-oriented helpers
+  explain.py              SHAP reporting utilities
+  fairness.py             Subgroup evaluation utilities
+  model.py                Training pipeline and artifact generation
+  monitoring.py           Drift and monitoring helpers
+
+tests/
+  test_pipeline.py        End-to-end smoke tests
+
+artifacts/                Generated during training or benchmarking
 ```
 
-## Quick start
+## Setup
+
+The commands below are written for PowerShell on Windows.
 
 ```powershell
 cd "C:\Users\Iftekhar Alam\PycharmProjects\Health-DS\risk-stratification"
 python -m pip install -r requirements.txt
 $env:PYTHONPATH = "src"
+```
+
+## Train the model
+
+Run the default training pipeline:
+
+```powershell
 python -m risk_strat
 ```
 
-The run will also save these artifacts under `artifacts/`:
-
-- `risk_model.joblib`
-- `metrics.json`
-- `fairness.json`
-- `shap_report.json`
-- `shap_background.csv`
-- `calibration.json`
-- `thresholds.json`
-- `model_card.md`
-
-If you want to train from a local CSV export of the same cohort:
+Train from a local CSV instead of fetching the UCI dataset:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m risk_strat --input-csv "data\diabetes_uci_export.csv"
+python -m risk_strat --input-csv "data\diabetes.csv"
 ```
 
-## Expected CSV format
+The CSV must contain either `readmitted_binary` or the raw `readmitted` column.
 
-If you export the cohort yourself, keep either:
+## Run the benchmark comparison
 
-- `readmitted_binary` as the binary target, or
-- the raw `readmitted` column, which will be converted automatically.
+The benchmark module trains additional baselines and writes a summary to `artifacts\benchmark_metrics.json`.
+
+```powershell
+python -m risk_strat.benchmark
+```
 
 ## Run the API
 
-After training once, start the service with:
+After training once, start the inference API:
 
 ```powershell
-$env:PYTHONPATH = "src"
 uvicorn risk_strat.api:app --reload
 ```
 
@@ -94,7 +97,7 @@ Available endpoints:
 - `POST /predict`
 - `POST /explain`
 
-Example payload:
+Example request body:
 
 ```json
 {
@@ -111,21 +114,60 @@ Example payload:
 ## Run tests
 
 ```powershell
-cd "C:\Users\Iftekhar Alam\PycharmProjects\Health-DS\risk-stratification"
 python -m pytest -q
 ```
 
-## Suggested next steps for interview strength
+## Outputs
 
-1. Add bootstrapped confidence intervals to AUC and fairness gaps.
-2. Add experiment tracking with MLflow and versioned model registry.
-3. Add threshold selection tied to a concrete clinical objective.
-4. Add request logging and monitoring for the FastAPI service.
-5. Later upgrade the same pipeline to MIMIC-IV once access is approved.
+The main training run writes these artifacts under `artifacts/`:
 
-## Notes on healthcare data
+- `risk_model.joblib`
+- `metrics.json`
+- `fairness.json`
+- `calibration.json`
+- `thresholds.json`
+- `shap_report.json`
+- `shap_background.csv`
+- `model_card.md`
 
-- Use de-identified data only.
-- Document label mapping and missing-value handling.
-- Track dataset version, model version, and decision threshold.
+The benchmark run also writes:
+
+- `benchmark_metrics.json`
+
+## Results summary
+
+### Main training run
+
+Held-out test set (`n=20,354`):
+
+- **ROC-AUC:** `0.6521`
+- **Average Precision:** `0.2028`
+- **Brier Score:** `0.2298`
+- **Best F1 threshold:** `0.55`
+
+Top features from the SHAP summary:
+
+- `number_inpatient`
+- `payer_code_missing`
+- `discharge_disposition_id`
+- `age_[70-80)`
+
+### Benchmark comparison
+
+Validation split (`n=15,265`):
+
+| Model | ROC-AUC | Average Precision | Brier Score |
+|---|---:|---:|---:|
+| Logistic Regression | 0.6447 | 0.2010 | 0.2308 |
+| XGBoost | **0.6710** | 0.2249 | **0.2167** |
+| LightGBM | 0.6702 | **0.2260** | 0.2170 |
+
+Additional details are available in `RESULTS.md` and the JSON artifacts under `artifacts/`.
+
+## Notes and limitations
+
+- The project uses de-identified public data.
+- The current default training path uses a stratified train/test split.
+- The `temporal_split` utility supports chronological splitting when a date-like column is available, but the public UCI dataset used here does not provide a production-ready event timestamp in the current pipeline.
+- This repository is intended for portfolio, experimentation, and engineering demonstration purposes rather than clinical use.
 

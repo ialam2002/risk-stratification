@@ -11,7 +11,10 @@ def _compute_feature_drift(
     numeric_cols: list[str],
     threshold: float = 0.1,
 ) -> dict[str, Any]:
-    """Detect drift using mean and std comparison."""
+    """Detect feature drift via normalized mean shift (z-score units).
+    
+    A feature is flagged if |test_mean - train_mean| / train_std > threshold.
+    """
     drift_report: dict[str, Any] = {
         "threshold": threshold,
         "features_with_drift": [],
@@ -26,10 +29,7 @@ def _compute_feature_drift(
         test_mean = float(test_frame[col].mean())
         train_std = float(train_frame[col].std())
 
-        if train_std > 0:
-            normalized_drift = abs(test_mean - train_mean) / train_std
-        else:
-            normalized_drift = 0.0
+        normalized_drift = abs(test_mean - train_mean) / train_std if train_std > 0 else 0.0
 
         drift_report["drift_metrics"][col] = {
             "train_mean": train_mean,
@@ -47,7 +47,7 @@ def _compute_prediction_drift(
     train_scores: np.ndarray,
     test_scores: np.ndarray,
 ) -> dict[str, Any]:
-    """Detect drift in prediction distributions."""
+    """Detect shifts in model score distributions."""
     return {
         "train_mean_score": float(train_scores.mean()),
         "test_mean_score": float(test_scores.mean()),
@@ -64,13 +64,12 @@ def _compute_calibration_drift(
     test_prob: np.ndarray,
     n_bins: int = 10,
 ) -> dict[str, Any]:
-    """Detect calibration drift by comparing bins."""
+    """Compare calibration error between train and test via binned accuracy."""
     metrics = {}
 
     for split_name, y, prob in [("train", train_y, train_prob), ("test", test_y, test_prob)]:
         bins = np.linspace(0, 1, n_bins + 1)
-        bin_accs = []
-        bin_confs = []
+        bin_accs, bin_confs = [], []
 
         for i in range(n_bins):
             mask = (prob >= bins[i]) & (prob < bins[i + 1])
@@ -95,7 +94,7 @@ def compute_monitoring_report(
     test_prob: np.ndarray,
     numeric_cols: list[str],
 ) -> dict[str, Any]:
-    """Generate comprehensive monitoring report."""
+    """Aggregate feature, prediction, and calibration drift statistics for monitoring."""
     return {
         "feature_drift": _compute_feature_drift(train_frame, test_frame, numeric_cols),
         "prediction_drift": _compute_prediction_drift(train_prob, test_prob),

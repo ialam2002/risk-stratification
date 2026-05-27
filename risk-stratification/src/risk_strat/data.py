@@ -109,3 +109,37 @@ def load_dataset(input_csv: str | None = None) -> pd.DataFrame:
         dataset = fetch_ucirepo(id=UCI_DIABETES_DATASET_ID)
     return prepare_diabetes_dataframe(dataset.data.features, dataset.data.targets)
 
+
+def temporal_split(
+    df: pd.DataFrame,
+    date_column: str | None = None,
+    train_ratio: float = 0.7,
+    test_ratio: float = 0.15,
+    val_ratio: float = 0.15,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Split dataset temporally if date_column is provided, else random split."""
+    if train_ratio + test_ratio + val_ratio != 1.0:
+        raise ValueError("train_ratio + test_ratio + val_ratio must equal 1.0")
+
+    if date_column and date_column in df.columns:
+        df_sorted = df.sort_values(by=date_column).reset_index(drop=True)
+        n = len(df_sorted)
+        train_end = int(n * train_ratio)
+        val_end = int(n * (train_ratio + val_ratio))
+
+        train = df_sorted.iloc[:train_end]
+        val = df_sorted.iloc[train_end:val_end]
+        test = df_sorted.iloc[val_end:]
+    else:
+        df_shuffled = df.sample(frac=1, random_state=42).reset_index(drop=True)
+        n = len(df_shuffled)
+        train_end = int(n * train_ratio)
+        val_end = int(n * (train_ratio + val_ratio))
+
+        train = df_shuffled.iloc[:train_end]
+        val = df_shuffled.iloc[train_end:val_end]
+        test = df_shuffled.iloc[val_end:]
+
+    return train, val, test
+
+

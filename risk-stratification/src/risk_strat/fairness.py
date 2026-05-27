@@ -26,6 +26,60 @@ def _group_summary(y_true: np.ndarray, y_score: np.ndarray, threshold: float = 0
     }
 
 
+def _disparity_for_metric(
+    groups: list[dict[str, Any]],
+    metric_name: str,
+    *,
+    lower_is_better: bool,
+) -> dict[str, Any] | None:
+    metric_values = [
+        (group["group"], float(group[metric_name]))
+        for group in groups
+        if group.get(metric_name) is not None
+    ]
+    if len(metric_values) < 2:
+        return None
+
+    sorted_values = sorted(metric_values, key=lambda item: item[1])
+    min_group, min_value = sorted_values[0]
+    max_group, max_value = sorted_values[-1]
+    gap = max_value - min_value
+
+    favored_group = min_group if lower_is_better else max_group
+    harmed_group = max_group if lower_is_better else min_group
+
+    return {
+        "gap": float(gap),
+        "favored_group": favored_group,
+        "harmed_group": harmed_group,
+        "min_value": float(min_value),
+        "max_value": float(max_value),
+    }
+
+
+def _compute_slice_disparities(groups: list[dict[str, Any]]) -> dict[str, Any]:
+    metric_config = {
+        "positive_rate": {"lower_is_better": False},
+        "mean_score": {"lower_is_better": False},
+        "predicted_positive_rate": {"lower_is_better": False},
+        "roc_auc": {"lower_is_better": False},
+        "average_precision": {"lower_is_better": False},
+        "brier_score": {"lower_is_better": True},
+    }
+    disparities: dict[str, Any] = {}
+
+    for metric_name, config in metric_config.items():
+        disparity = _disparity_for_metric(
+            groups,
+            metric_name,
+            lower_is_better=bool(config["lower_is_better"]),
+        )
+        if disparity is not None:
+            disparities[metric_name] = disparity
+
+    return disparities
+
+
 def compute_fairness_report(
     y_true: pd.Series,
     y_score: np.ndarray,
@@ -36,6 +90,7 @@ def compute_fairness_report(
     report: dict[str, Any] = {
         "min_group_size": int(min_group_size),
         "slices": {},
+        "disparities": {},
     }
 
     aligned_y = pd.Series(y_true).reset_index(drop=True)
@@ -62,7 +117,9 @@ def compute_fairness_report(
             )
 
         if column_report:
-            report["slices"][column] = sorted(column_report, key=lambda item: item["n"], reverse=True)
+            sorted_report = sorted(column_report, key=lambda item: item["n"], reverse=True)
+            report["slices"][column] = sorted_report
+            report["disparities"][column] = _compute_slice_disparities(sorted_report)
 
     return report
 

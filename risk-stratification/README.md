@@ -19,8 +19,11 @@ The default workflow fetches the dataset directly through `ucimlrepo`, cleans th
 - End-to-end real-data ML workflow
 - Healthcare-style target definition and cohort cleaning
 - Model evaluation with `roc_auc`, `average_precision`, and `brier_score`
-- Fairness slices by `age`, `gender`, and `race`
+- Fairness slices by `age`, `gender`, and `race` with disparity gaps
+- Calibration curve summary and mean absolute calibration error
+- Threshold tuning report (default, best F1, and best Youden J)
 - SHAP-based feature attribution reports
+- Auto-generated model card markdown for interview storytelling
 - FastAPI scoring and explanation endpoints
 - Reproducible training pipeline and test harness
 - Strong portfolio story for healthcare AI interviews
@@ -58,6 +61,9 @@ The run will also save these artifacts under `artifacts/`:
 - `fairness.json`
 - `shap_report.json`
 - `shap_background.csv`
+- `calibration.json`
+- `thresholds.json`
+- `model_card.md`
 
 If you want to train from a local CSV export of the same cohort:
 
@@ -111,10 +117,10 @@ python -m pytest -q
 
 ## Suggested next steps for interview strength
 
-1. Add subgroup fairness analysis by age, gender, or race.
-2. Add probability calibration and compare Brier score / calibration curves.
-3. Add SHAP explanations for top features.
-4. Add a FastAPI inference service and audit logging.
+1. Add bootstrapped confidence intervals to AUC and fairness gaps.
+2. Add experiment tracking with MLflow and versioned model registry.
+3. Add threshold selection tied to a concrete clinical objective.
+4. Add request logging and monitoring for the FastAPI service.
 5. Later upgrade the same pipeline to MIMIC-IV once access is approved.
 
 ## Notes on healthcare data

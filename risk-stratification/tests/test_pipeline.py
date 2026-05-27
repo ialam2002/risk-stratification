@@ -59,11 +59,19 @@ def test_training_pipeline_smoke(tmp_path: Path, monkeypatch) -> None:
     assert result.fairness_path.exists()
     assert result.shap_report_path.exists()
     assert result.shap_background_path.exists()
+    assert result.calibration_path.exists()
+    assert result.threshold_report_path.exists()
+    assert result.model_card_path.exists()
 
     assert result.metrics["dataset"] == "uci_diabetes_130_us_hospitals"
     assert result.metrics["n_rows"] == rows
     assert "fairness" in result.metrics
+    assert "calibration" in result.metrics
+    assert "thresholds" in result.metrics
     assert "shap" in result.metrics
+    assert "disparities" in result.metrics["fairness"]
+    assert "best_f1_threshold" in result.metrics["thresholds"]
+    assert "mean_absolute_calibration_error" in result.metrics["calibration"]
     assert 0.5 <= result.metrics["roc_auc"] <= 1.0
     assert 0.0 <= result.metrics["average_precision"] <= 1.0
     assert 0.0 <= result.metrics["brier_score"] <= 1.0
